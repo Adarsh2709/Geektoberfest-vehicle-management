@@ -2,6 +2,14 @@
 
 A small, beginner-friendly app for keeping your vehicles and their maintenance history together. See what you own, what service has been done, what it cost, and the next service date when you have one.
 
+## 🌐 Live Demo
+
+- **Frontend:** https://ehicle-maintenance-index.vercel.app
+- **Backend API:** https://vehicle-maintenance-api-5f73.onrender.com
+- **API Documentation:** https://vehicle-maintenance-api-5f73.onrender.com/docs
+- **Health Check:** https://vehicle-maintenance-api-5f73.onrender.com/health
+
+
 ## Features
 
 - Register and log in with a password protected using Argon2, then receive a JWT for API access.
