@@ -1,0 +1,9 @@
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
+
+export default function Register({ onSubmit }) {
+  const [form, setForm] = useState({ username: '', email: '', password: '' }); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  function change(event) { setForm({ ...form, [event.target.name]: event.target.value }) }
+  async function submit(event) { event.preventDefault(); setError(''); setBusy(true); try { await onSubmit(form.username, form.email, form.password) } catch (err) { setError(err.message) } finally { setBusy(false) } }
+  return <section className="auth-layout"><div className="auth-aside"><span className="eyebrow">START YOUR SERVICE LOG</span><h1>Take the guesswork out of vehicle care.</h1><p>A tidy home for the little details that make ownership easier.</p><div className="aside-note"><span>✳</span> Your records belong to you.</div></div><div className="auth-card"><span className="eyebrow">GET STARTED</span><h2>Create your account</h2><p className="muted">It only takes a minute.</p>{error && <p className="error-banner">{error}</p>}<form onSubmit={submit}><label>Your name<input required minLength="2" maxLength="50" autoComplete="username" name="username" value={form.username} onChange={change} /></label><label>Email<input required type="email" autoComplete="email" name="email" value={form.email} onChange={change} /></label><label>Password<input required type="password" minLength="8" autoComplete="new-password" name="password" value={form.password} onChange={change} /><span className="hint">Use at least 8 characters.</span></label><button className="button primary full" disabled={busy}>{busy ? 'Creating account…' : 'Create account'} <span>→</span></button></form><p className="auth-switch">Already have an account? <Link to="/login">Log in</Link></p></div></section>
+}
