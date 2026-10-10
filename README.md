@@ -75,4 +75,4 @@ Vite serves the app at <http://localhost:5173>. It connects to the API at `http:
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the fork, branch, and pull request workflow. Ideas intentionally left for contributors are listed in [GOOD_FIRST_ISSUES.md](GOOD_FIRST_ISSUES.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the fork, branch, and pull request workflow.
