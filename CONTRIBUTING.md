@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Vehicle Maintenance Index. Small, focused contributions are welcome. For a first contribution, take a look at [GOOD_FIRST_ISSUES.md](GOOD_FIRST_ISSUES.md).
+Thanks for helping improve Vehicle Maintenance Index. Small, focused contributions are welcome.
 
 ## Contribution steps
 
