@@ -18,6 +18,9 @@ node_modules/
 dist/
 build/
 
+# Uploaded receipt files (local dev storage, never commit)
+uploads/
+
 # Python packaging
 *.egg-info/
 .eggs/

@@ -82,6 +82,9 @@ class MaintenanceRead(MaintenanceBase):
     id: int
     vehicle_id: int
     created_at: datetime
+    receipt_original_name: str | None = None
+    receipt_content_type: str | None = None
+    receipt_size: int | None = None
     model_config = ConfigDict(from_attributes=True)
 
 

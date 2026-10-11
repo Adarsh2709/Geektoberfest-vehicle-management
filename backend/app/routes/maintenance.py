@@ -1,17 +1,40 @@
 from datetime import date
+from pathlib import Path
+from uuid import uuid4
 import csv
 import io
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
+from app.config import settings
 from app.database import get_db
 from app.models import MaintenanceRecord, User, Vehicle
 from app.schemas import MaintenanceCreate, MaintenanceRead, MaintenanceSummary, MaintenanceUpdate
 
 router = APIRouter(tags=["maintenance"])
+
+ALLOWED_RECEIPT_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".webp"}
+ALLOWED_RECEIPT_CONTENT_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
+
+
+def receipt_directory() -> Path:
+    directory = Path(settings.receipt_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def remove_receipt_file(path_value: str | None) -> None:
+    if not path_value:
+        return
+    try:
+        Path(path_value).unlink(missing_ok=True)
+    except OSError:
+        pass
+
 
 # Columns written by the CSV export, in order.
 CSV_COLUMNS = [
@@ -155,5 +178,77 @@ def update_record(record_id: int, data: MaintenanceUpdate, db: Session = Depends
 @router.delete("/maintenance/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_record(record_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     record = owned_record(db, record_id, user.id)
+    receipt_path = record.receipt_path
     db.delete(record)
     db.commit()
+    remove_receipt_file(receipt_path)
+
+
+@router.post("/maintenance/{record_id}/receipt", response_model=MaintenanceRead, status_code=status.HTTP_201_CREATED)
+async def upload_receipt(record_id: int, file: UploadFile, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    record = owned_record(db, record_id, user.id)
+    original_name = (file.filename or "").strip()
+    extension = Path(original_name).suffix.lower()
+    if extension not in ALLOWED_RECEIPT_EXTENSIONS or (file.content_type or "").lower() not in ALLOWED_RECEIPT_CONTENT_TYPES:
+        raise HTTPException(status_code=422, detail="Receipt must be a PDF, JPG, PNG, or WebP file")
+    contents = await file.read()
+    max_bytes = settings.max_receipt_mb * 1024 * 1024
+    if not contents or len(contents) > max_bytes:
+        raise HTTPException(
+            status_code=413 if contents else 422,
+            detail=f"Receipt must not be empty and must be under {settings.max_receipt_mb} MB",
+        )
+    stored_name = f"{record.id}_{uuid4().hex}{extension}"
+    target = receipt_directory() / stored_name
+    old_path = record.receipt_path
+    try:
+        target.write_bytes(contents)
+    except OSError:
+        try:
+            target.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise HTTPException(status_code=500, detail="Could not store the receipt. Please try again.")
+    record.receipt_path = str(target)
+    record.receipt_content_type = (file.content_type or "").lower()
+    record.receipt_size = len(contents)
+    record.receipt_original_name = Path(original_name).name[:255]
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        try:
+            target.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise HTTPException(status_code=500, detail="Could not store the receipt. Please try again.")
+    db.refresh(record)
+    if old_path and old_path != record.receipt_path:
+        remove_receipt_file(old_path)
+    return record
+
+
+@router.get("/maintenance/{record_id}/receipt")
+def download_receipt(record_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    record = owned_record(db, record_id, user.id)
+    if not record.receipt_path or not Path(record.receipt_path).is_file():
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    return FileResponse(
+        record.receipt_path,
+        media_type=record.receipt_content_type or "application/octet-stream",
+        filename=record.receipt_original_name or Path(record.receipt_path).name,
+    )
+
+
+@router.delete("/maintenance/{record_id}/receipt", status_code=status.HTTP_204_NO_CONTENT)
+def delete_receipt(record_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    record = owned_record(db, record_id, user.id)
+    if not record.receipt_path:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    old_path = record.receipt_path
+    record.receipt_path = None
+    record.receipt_content_type = None
+    record.receipt_size = None
+    record.receipt_original_name = None
+    db.commit()
+    remove_receipt_file(old_path)
