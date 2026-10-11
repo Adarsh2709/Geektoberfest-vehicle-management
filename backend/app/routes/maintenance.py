@@ -1,16 +1,15 @@
 from datetime import date
-
 import csv
 import io
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
 from app.models import MaintenanceRecord, User, Vehicle
-from app.schemas import MaintenanceCreate, MaintenanceRead, MaintenanceUpdate
+from app.schemas import MaintenanceCreate, MaintenanceRead, MaintenanceSummary, MaintenanceUpdate
 
 router = APIRouter(tags=["maintenance"])
 
@@ -49,6 +48,31 @@ def create_record(vehicle_id: int, data: MaintenanceCreate, db: Session = Depend
     db.commit()
     db.refresh(record)
     return record
+
+
+@router.get("/vehicles/{vehicle_id}/maintenance/summary", response_model=MaintenanceSummary)
+def maintenance_summary(
+    vehicle_id: int, service_type: str | None = None,
+    start_date: date | None = Query(default=None), end_date: date | None = Query(default=None),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date cannot be after end_date")
+    owned_vehicle(db, vehicle_id, user.id)
+    filters = [MaintenanceRecord.vehicle_id == vehicle_id]
+    if service_type:
+        filters.append(MaintenanceRecord.service_type == service_type)
+    if start_date:
+        filters.append(MaintenanceRecord.service_date >= start_date)
+    if end_date:
+        filters.append(MaintenanceRecord.service_date <= end_date)
+    record_count, total_cost = db.execute(
+        select(func.count(), func.coalesce(func.sum(func.coalesce(MaintenanceRecord.cost, 0)), 0)).where(*filters)
+    ).one()
+    return {
+        "vehicle_id": vehicle_id, "record_count": record_count, "total_cost": total_cost,
+        "start_date": start_date, "end_date": end_date, "service_type": service_type,
+    }
 
 
 @router.get("/vehicles/{vehicle_id}/maintenance", response_model=list[MaintenanceRead])

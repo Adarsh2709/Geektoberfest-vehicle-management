@@ -85,6 +85,15 @@ class MaintenanceRead(MaintenanceBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MaintenanceSummary(BaseModel):
+    vehicle_id: int
+    record_count: int
+    total_cost: Decimal
+    start_date: date | None = None
+    end_date: date | None = None
+    service_type: str | None = None
+
+
 class VehicleRead(VehicleBase):
     id: int
     owner_id: int
