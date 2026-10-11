@@ -15,8 +15,11 @@ A small, beginner-friendly app for keeping your vehicles and their maintenance h
 - Register and log in with a password protected using Argon2, then receive a JWT for API access.
 - Add, view, update, and delete your own vehicles.
 - Record, edit, and delete service history with mileage, cost, notes, and optional next-service details.
+- Mileage must stay non-decreasing per vehicle; lower readings are rejected with a message to correct the earlier entry.
+- Attach receipt files (PDF/JPG/PNG/WebP up to 5 MB) to service records; only the vehicle owner can view or download them.
 - Filter service history by service type or date and choose the date order.
 - See service counts, the last service, and the next service on your dashboard.
+- See total maintenance spending for a vehicle over the selected date range on the vehicle details page.
 - New accounts see a helpful empty state with a clear action to add their first vehicle.
 - Keep user data private through backend ownership checks.
 

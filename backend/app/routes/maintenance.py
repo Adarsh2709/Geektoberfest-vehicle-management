@@ -1,18 +1,40 @@
 from datetime import date
-
+from pathlib import Path
+from uuid import uuid4
 import csv
 import io
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, status
+from fastapi.responses import FileResponse
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
+from app.config import settings
 from app.database import get_db
 from app.models import MaintenanceRecord, User, Vehicle
-from app.schemas import MaintenanceCreate, MaintenanceRead, MaintenanceUpdate
+from app.schemas import MaintenanceCreate, MaintenanceRead, MaintenanceSummary, MaintenanceUpdate
 
 router = APIRouter(tags=["maintenance"])
+
+ALLOWED_RECEIPT_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".webp"}
+ALLOWED_RECEIPT_CONTENT_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
+
+
+def receipt_directory() -> Path:
+    directory = Path(settings.receipt_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def remove_receipt_file(path_value: str | None) -> None:
+    if not path_value:
+        return
+    try:
+        Path(path_value).unlink(missing_ok=True)
+    except OSError:
+        pass
+
 
 # Columns written by the CSV export, in order.
 CSV_COLUMNS = [
@@ -41,14 +63,57 @@ def owned_record(db: Session, record_id: int, owner_id: int) -> MaintenanceRecor
     return record
 
 
+def check_mileage(db: Session, vehicle_id: int, mileage: int, exclude_id: int | None = None) -> None:
+    if mileage < 0:
+        raise HTTPException(status_code=422, detail="Mileage must be a non-negative value")
+    query = select(func.max(MaintenanceRecord.mileage)).where(MaintenanceRecord.vehicle_id == vehicle_id)
+    if exclude_id is not None:
+        query = query.where(MaintenanceRecord.id != exclude_id)
+    highest = db.scalar(query)
+    if highest is not None and mileage < highest:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Mileage {mileage} km is lower than the highest recorded reading {highest} km. "
+                f"Correct the earlier entry, or enter a reading of at least {highest} km."
+            ),
+        )
+
+
 @router.post("/vehicles/{vehicle_id}/maintenance", response_model=MaintenanceRead, status_code=status.HTTP_201_CREATED)
 def create_record(vehicle_id: int, data: MaintenanceCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     owned_vehicle(db, vehicle_id, user.id)
+    check_mileage(db, vehicle_id, data.mileage)
     record = MaintenanceRecord(**data.model_dump(), vehicle_id=vehicle_id)
     db.add(record)
     db.commit()
     db.refresh(record)
     return record
+
+
+@router.get("/vehicles/{vehicle_id}/maintenance/summary", response_model=MaintenanceSummary)
+def maintenance_summary(
+    vehicle_id: int, service_type: str | None = None,
+    start_date: date | None = Query(default=None), end_date: date | None = Query(default=None),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date cannot be after end_date")
+    owned_vehicle(db, vehicle_id, user.id)
+    filters = [MaintenanceRecord.vehicle_id == vehicle_id]
+    if service_type:
+        filters.append(MaintenanceRecord.service_type == service_type)
+    if start_date:
+        filters.append(MaintenanceRecord.service_date >= start_date)
+    if end_date:
+        filters.append(MaintenanceRecord.service_date <= end_date)
+    record_count, total_cost = db.execute(
+        select(func.count(), func.coalesce(func.sum(func.coalesce(MaintenanceRecord.cost, 0)), 0)).where(*filters)
+    ).one()
+    return {
+        "vehicle_id": vehicle_id, "record_count": record_count, "total_cost": total_cost,
+        "start_date": start_date, "end_date": end_date, "service_type": service_type,
+    }
 
 
 @router.get("/vehicles/{vehicle_id}/maintenance", response_model=list[MaintenanceRead])
@@ -121,6 +186,7 @@ def get_record(record_id: int, db: Session = Depends(get_db), user: User = Depen
 @router.put("/maintenance/{record_id}", response_model=MaintenanceRead)
 def update_record(record_id: int, data: MaintenanceUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     record = owned_record(db, record_id, user.id)
+    check_mileage(db, record.vehicle_id, data.mileage, exclude_id=record.id)
     for key, value in data.model_dump().items():
         setattr(record, key, value)
     db.commit()
@@ -131,5 +197,77 @@ def update_record(record_id: int, data: MaintenanceUpdate, db: Session = Depends
 @router.delete("/maintenance/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_record(record_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     record = owned_record(db, record_id, user.id)
+    receipt_path = record.receipt_path
     db.delete(record)
     db.commit()
+    remove_receipt_file(receipt_path)
+
+
+@router.post("/maintenance/{record_id}/receipt", response_model=MaintenanceRead, status_code=status.HTTP_201_CREATED)
+async def upload_receipt(record_id: int, file: UploadFile, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    record = owned_record(db, record_id, user.id)
+    original_name = (file.filename or "").strip()
+    extension = Path(original_name).suffix.lower()
+    if extension not in ALLOWED_RECEIPT_EXTENSIONS or (file.content_type or "").lower() not in ALLOWED_RECEIPT_CONTENT_TYPES:
+        raise HTTPException(status_code=422, detail="Receipt must be a PDF, JPG, PNG, or WebP file")
+    contents = await file.read()
+    max_bytes = settings.max_receipt_mb * 1024 * 1024
+    if not contents or len(contents) > max_bytes:
+        raise HTTPException(
+            status_code=413 if contents else 422,
+            detail=f"Receipt must not be empty and must be under {settings.max_receipt_mb} MB",
+        )
+    stored_name = f"{record.id}_{uuid4().hex}{extension}"
+    target = receipt_directory() / stored_name
+    old_path = record.receipt_path
+    try:
+        target.write_bytes(contents)
+    except OSError:
+        try:
+            target.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise HTTPException(status_code=500, detail="Could not store the receipt. Please try again.")
+    record.receipt_path = str(target)
+    record.receipt_content_type = (file.content_type or "").lower()
+    record.receipt_size = len(contents)
+    record.receipt_original_name = Path(original_name).name[:255]
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        try:
+            target.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise HTTPException(status_code=500, detail="Could not store the receipt. Please try again.")
+    db.refresh(record)
+    if old_path and old_path != record.receipt_path:
+        remove_receipt_file(old_path)
+    return record
+
+
+@router.get("/maintenance/{record_id}/receipt")
+def download_receipt(record_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    record = owned_record(db, record_id, user.id)
+    if not record.receipt_path or not Path(record.receipt_path).is_file():
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    return FileResponse(
+        record.receipt_path,
+        media_type=record.receipt_content_type or "application/octet-stream",
+        filename=record.receipt_original_name or Path(record.receipt_path).name,
+    )
+
+
+@router.delete("/maintenance/{record_id}/receipt", status_code=status.HTTP_204_NO_CONTENT)
+def delete_receipt(record_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    record = owned_record(db, record_id, user.id)
+    if not record.receipt_path:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    old_path = record.receipt_path
+    record.receipt_path = None
+    record.receipt_content_type = None
+    record.receipt_size = None
+    record.receipt_original_name = None
+    db.commit()
+    remove_receipt_file(old_path)
