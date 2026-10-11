@@ -17,6 +17,7 @@ A small, beginner-friendly app for keeping your vehicles and their maintenance h
 - Record, edit, and delete service history with mileage, cost, notes, and optional next-service details.
 - Filter service history by service type or date and choose the date order.
 - See service counts, the last service, and the next service on your dashboard.
+- New accounts see a helpful empty state with a clear action to add their first vehicle.
 - Keep user data private through backend ownership checks.
 
 ## Tech stack
