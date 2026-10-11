@@ -63,9 +63,27 @@ def owned_record(db: Session, record_id: int, owner_id: int) -> MaintenanceRecor
     return record
 
 
+def check_mileage(db: Session, vehicle_id: int, mileage: int, exclude_id: int | None = None) -> None:
+    if mileage < 0:
+        raise HTTPException(status_code=422, detail="Mileage must be a non-negative value")
+    query = select(func.max(MaintenanceRecord.mileage)).where(MaintenanceRecord.vehicle_id == vehicle_id)
+    if exclude_id is not None:
+        query = query.where(MaintenanceRecord.id != exclude_id)
+    highest = db.scalar(query)
+    if highest is not None and mileage < highest:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Mileage {mileage} km is lower than the highest recorded reading {highest} km. "
+                f"Correct the earlier entry, or enter a reading of at least {highest} km."
+            ),
+        )
+
+
 @router.post("/vehicles/{vehicle_id}/maintenance", response_model=MaintenanceRead, status_code=status.HTTP_201_CREATED)
 def create_record(vehicle_id: int, data: MaintenanceCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     owned_vehicle(db, vehicle_id, user.id)
+    check_mileage(db, vehicle_id, data.mileage)
     record = MaintenanceRecord(**data.model_dump(), vehicle_id=vehicle_id)
     db.add(record)
     db.commit()
@@ -168,6 +186,7 @@ def get_record(record_id: int, db: Session = Depends(get_db), user: User = Depen
 @router.put("/maintenance/{record_id}", response_model=MaintenanceRead)
 def update_record(record_id: int, data: MaintenanceUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     record = owned_record(db, record_id, user.id)
+    check_mileage(db, record.vehicle_id, data.mileage, exclude_id=record.id)
     for key, value in data.model_dump().items():
         setattr(record, key, value)
     db.commit()
