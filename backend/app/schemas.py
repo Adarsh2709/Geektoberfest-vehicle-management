@@ -52,6 +52,25 @@ class VehicleUpdate(VehicleBase):
     pass
 
 
+SERVICE_TYPES = frozenset({
+    "Oil Change",
+    "General Service",
+    "Brake Service",
+    "Tire Change",
+    "Battery",
+    "Other",
+})
+
+
+def validate_service_type(value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError("Service type cannot be blank")
+    if value not in SERVICE_TYPES:
+        raise ValueError(f"Unknown service type. Choose one of: {', '.join(sorted(SERVICE_TYPES))}")
+    return value
+
+
 class MaintenanceBase(BaseModel):
     service_date: date
     mileage: int = Field(ge=0)
@@ -61,21 +80,19 @@ class MaintenanceBase(BaseModel):
     next_service_date: date | None = None
     next_service_mileage: int | None = Field(default=None, ge=0)
 
-    @field_validator("service_type")
-    @classmethod
-    def service_type_not_blank(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("Service type cannot be blank")
-        return value
-
 
 class MaintenanceCreate(MaintenanceBase):
-    pass
+    @field_validator("service_type")
+    @classmethod
+    def service_type_must_be_known(cls, value: str) -> str:
+        return validate_service_type(value)
 
 
 class MaintenanceUpdate(MaintenanceBase):
-    pass
+    @field_validator("service_type")
+    @classmethod
+    def service_type_must_be_known(cls, value: str) -> str:
+        return validate_service_type(value)
 
 
 class MaintenanceRead(MaintenanceBase):
