@@ -13,7 +13,7 @@ from app.auth import get_current_user
 from app.config import settings
 from app.database import get_db
 from app.models import MaintenanceRecord, User, Vehicle
-from app.schemas import MaintenanceCreate, MaintenanceRead, MaintenanceSummary, MaintenanceUpdate
+from app.schemas import MaintenanceCreate, MaintenanceRead, MaintenanceSummary, MaintenanceUpdate, SERVICE_TYPES
 
 router = APIRouter(tags=["maintenance"])
 
@@ -123,6 +123,11 @@ def list_records(
     sort: str = Query(default="desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    if service_type is not None and service_type not in SERVICE_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown service type. Choose one of: {', '.join(sorted(SERVICE_TYPES))}",
+        )
     owned_vehicle(db, vehicle_id, user.id)
     query = select(MaintenanceRecord).where(MaintenanceRecord.vehicle_id == vehicle_id)
     if service_type:
