@@ -80,18 +80,19 @@ class MaintenanceBase(BaseModel):
     next_service_date: date | None = None
     next_service_mileage: int | None = Field(default=None, ge=0)
 
+
+class MaintenanceCreate(MaintenanceBase):
     @field_validator("service_type")
     @classmethod
     def service_type_must_be_known(cls, value: str) -> str:
         return validate_service_type(value)
 
 
-class MaintenanceCreate(MaintenanceBase):
-    pass
-
-
 class MaintenanceUpdate(MaintenanceBase):
-    pass
+    @field_validator("service_type")
+    @classmethod
+    def service_type_must_be_known(cls, value: str) -> str:
+        return validate_service_type(value)
 
 
 class MaintenanceRead(MaintenanceBase):
