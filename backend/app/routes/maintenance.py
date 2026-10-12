@@ -120,7 +120,7 @@ def maintenance_summary(
 def list_records(
     vehicle_id: int, service_type: str | None = None,
     start_date: date | None = Query(default=None), end_date: date | None = Query(default=None),
-    sort: str = Query(default="desc", pattern="^(asc|desc)$"),
+    sort: str = Query(default="desc", pattern="^(asc|desc|date_asc|date_desc|cost_asc|cost_desc)$"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     owned_vehicle(db, vehicle_id, user.id)
@@ -131,7 +131,14 @@ def list_records(
         query = query.where(MaintenanceRecord.service_date >= start_date)
     if end_date:
         query = query.where(MaintenanceRecord.service_date <= end_date)
-    ordering = MaintenanceRecord.service_date.asc() if sort == "asc" else MaintenanceRecord.service_date.desc()
+    if sort == "cost_desc":
+        ordering = MaintenanceRecord.cost.desc().nulls_last()
+    elif sort == "cost_asc":
+        ordering = MaintenanceRecord.cost.asc().nulls_last()
+    elif sort in ("asc", "date_asc"):
+        ordering = MaintenanceRecord.service_date.asc().nulls_last()
+    else:
+        ordering = MaintenanceRecord.service_date.desc().nulls_last()
     return db.scalars(query.order_by(ordering, MaintenanceRecord.id.desc())).all()
 
 
