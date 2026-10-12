@@ -123,6 +123,8 @@ def list_records(
     sort: str = Query(default="desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date cannot be after end_date")
     owned_vehicle(db, vehicle_id, user.id)
     query = select(MaintenanceRecord).where(MaintenanceRecord.vehicle_id == vehicle_id)
     if service_type:
