@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { api, uploadReceipt } from '../api'
+import { SERVICE_TYPES } from '../serviceTypes'
 
 const blank = { service_date: new Date().toISOString().slice(0, 10), mileage: '', service_type: 'Oil Change', description: '', cost: '', next_service_date: '', next_service_mileage: '' }
 export default function MaintenanceForm({ vehicleId, record, onSaved, onCancel }) {
@@ -28,7 +29,7 @@ export default function MaintenanceForm({ vehicleId, record, onSaved, onCancel }
   }
   return <form className="maintenance-form" onSubmit={submit}>{error && <p className="error-banner">{error}</p>}
     <div className="form-row"><label>Service date<input required type="date" name="service_date" value={form.service_date} onChange={change} /></label><label>Mileage (km)<input required type="number" min="0" name="mileage" value={form.mileage} onChange={change} /><span className="hint">Must not be lower than the highest recorded reading.</span></label></div>
-    <div className="form-row"><label>Service type<select name="service_type" value={form.service_type} onChange={change}>{['Oil Change', 'General Service', 'Brake Service', 'Tire Change', 'Battery', 'Other'].map(item => <option key={item}>{item}</option>)}</select></label><label>Cost (₹)<input required type="number" min="0" step="0.01" name="cost" value={form.cost} onChange={change} /></label></div>
+    <div className="form-row"><label>Service type<select name="service_type" value={form.service_type} onChange={change}>{SERVICE_TYPES.map(item => <option key={item}>{item}</option>)}</select></label><label>Cost (₹)<input required type="number" min="0" step="0.01" name="cost" value={form.cost} onChange={change} /></label></div>
     <label>Description <span className="optional">(optional)</span><textarea rows="2" maxLength="2000" name="description" value={form.description || ''} onChange={change} placeholder="What was done?" /></label>
     <label>Receipt <span className="optional">(optional, PDF/JPG/PNG/WebP up to 5 MB)</span><input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e => setReceiptFile(e.target.files[0] ?? null)} />{receiptFile && <span className="optional">Selected: {receiptFile.name}</span>}{!receiptFile && record?.receipt_original_name && <span className="optional">Current: {record.receipt_original_name}</span>}</label>
     <div className="form-row"><label>Next service date <span className="optional">(optional)</span><input type="date" name="next_service_date" value={form.next_service_date || ''} onChange={change} /></label><label>Next service mileage <span className="optional">(optional)</span><input type="number" min="0" name="next_service_mileage" value={form.next_service_mileage ?? ''} onChange={change} /></label></div>

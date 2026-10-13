@@ -13,7 +13,7 @@ from app.auth import get_current_user
 from app.config import settings
 from app.database import get_db
 from app.models import MaintenanceRecord, User, Vehicle
-from app.schemas import MaintenanceCreate, MaintenanceRead, MaintenanceSummary, MaintenanceUpdate
+from app.schemas import MaintenanceCreate, MaintenanceRead, MaintenanceSummary, MaintenanceUpdate, SERVICE_TYPES
 
 router = APIRouter(tags=["maintenance"])
 
@@ -121,10 +121,17 @@ def list_records(
     vehicle_id: int, service_type: str | None = None,
     start_date: date | None = Query(default=None), end_date: date | None = Query(default=None),
     sort: str = Query(default="desc", pattern="^(asc|desc)$"),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=422, detail="start_date cannot be after end_date")
+    if service_type is not None and service_type not in SERVICE_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown service type. Choose one of: {', '.join(sorted(SERVICE_TYPES))}",
+        )
     owned_vehicle(db, vehicle_id, user.id)
     query = select(MaintenanceRecord).where(MaintenanceRecord.vehicle_id == vehicle_id)
     if service_type:
@@ -133,8 +140,15 @@ def list_records(
         query = query.where(MaintenanceRecord.service_date >= start_date)
     if end_date:
         query = query.where(MaintenanceRecord.service_date <= end_date)
+    
     ordering = MaintenanceRecord.service_date.asc() if sort == "asc" else MaintenanceRecord.service_date.desc()
-    return db.scalars(query.order_by(ordering, MaintenanceRecord.id.desc())).all()
+    query = query.order_by(ordering, MaintenanceRecord.id.desc())
+    
+    # Apply pagination offset and limit
+    offset = (page - 1) * limit
+    query = query.offset(offset).limit(limit)
+    
+    return db.scalars(query).all()
 
 
 @router.get("/vehicles/{vehicle_id}/maintenance.csv")
@@ -143,13 +157,6 @@ def export_records_csv(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Download the signed-in user's maintenance history for a vehicle as CSV.
-
-    Only the vehicle owner may export, and only that vehicle's records are
-    included. Columns are listed in ``CSV_COLUMNS``; values are written with the
-    standard-library csv writer so commas, quotes, and line breaks in free-text
-    fields (e.g. ``description``) are escaped correctly.
-    """
     owned_vehicle(db, vehicle_id, user.id)
     records = db.scalars(
         select(MaintenanceRecord)
