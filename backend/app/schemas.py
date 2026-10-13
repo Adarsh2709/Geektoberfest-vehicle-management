@@ -33,7 +33,9 @@ class VehicleBase(BaseModel):
     model: str = Field(min_length=1, max_length=100)
     year: int = Field(ge=1886, le=2100)
     registration_number: str = Field(min_length=1, max_length=30)
-    current_mileage: int = Field(ge=0)
+    current_mileage: int | None = Field(default=0, ge=0)
+    next_service_date: date | None = None
+    next_service_mileage: int | None = Field(default=None, ge=0)
 
     @field_validator("make", "model", "registration_number")
     @classmethod
@@ -97,6 +99,26 @@ class MaintenanceSummary(BaseModel):
     service_type: str | None = None
 
 
+class ReminderThresholdUpdate(BaseModel):
+    next_service_date: date | None = None
+    next_service_mileage: int | None = Field(default=None, ge=0)
+
+
+class ServiceReminder(BaseModel):
+    vehicle_id: int
+    registration_number: str
+    make: str
+    model: str
+    current_mileage: int | None = None
+    next_service_date: date | None = None
+    next_service_mileage: int | None = None
+    date_status: str | None = None
+    mileage_status: str | None = None
+    status: str | None = None
+    days_remaining: int | None = None
+    km_remaining: int | None = None
+
+
 class VehicleRead(VehicleBase):
     id: int
     owner_id: int
@@ -104,4 +126,7 @@ class VehicleRead(VehicleBase):
     maintenance_count: int = 0
     last_service_date: date | None = None
     next_service_date: date | None = None
+    next_service_mileage: int | None = None
+    service_status: str | None = None
+    service_reminder: ServiceReminder | None = None
     model_config = ConfigDict(from_attributes=True)
