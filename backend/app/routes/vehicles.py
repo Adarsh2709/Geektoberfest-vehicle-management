@@ -1,7 +1,7 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -47,8 +47,16 @@ def create_vehicle(data: VehicleCreate, db: Session = Depends(get_db), user: Use
 
 
 @router.get("", response_model=list[VehicleRead])
-def list_vehicles(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    vehicles = db.scalars(select(Vehicle).options(selectinload(Vehicle.maintenance_records)).where(Vehicle.owner_id == user.id).order_by(Vehicle.created_at.desc())).all()
+def list_vehicles(
+    registration_number: str | None = Query(default=None, max_length=30),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    statement = select(Vehicle).options(selectinload(Vehicle.maintenance_records)).where(Vehicle.owner_id == user.id)
+    search = registration_number.strip() if registration_number else ""
+    if search:
+        statement = statement.where(func.lower(Vehicle.registration_number).contains(search.lower(), autoescape=True))
+    vehicles = db.scalars(statement.order_by(Vehicle.created_at.desc())).all()
     return [dashboard_vehicle(vehicle) for vehicle in vehicles]
 
 
