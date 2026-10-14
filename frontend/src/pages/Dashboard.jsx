@@ -5,15 +5,19 @@ import VehicleCard from '../components/VehicleCard'
 
 export default function Dashboard() {
   const [vehicles, setVehicles] = useState([])
+  const [registrationSearch, setRegistrationSearch] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api('/vehicles')
+    const query = registrationSearch.trim()
+    const path = query ? `/vehicles?registration_number=${encodeURIComponent(query)}` : '/vehicles'
+    setLoading(true)
+    api(path)
       .then(setVehicles)
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
-  }, [])
+  }, [registrationSearch])
 
   return (
     <>
@@ -37,6 +41,19 @@ export default function Dashboard() {
         </div>
       </section>
 
+      <div className="vehicle-search">
+        <label htmlFor="registration-search">Search by registration number</label>
+        <input
+          id="registration-search"
+          type="search"
+          value={registrationSearch}
+          onChange={event => setRegistrationSearch(event.target.value)}
+          placeholder="e.g. KA01AB1234"
+          aria-describedby="registration-search-hint"
+        />
+        <p id="registration-search-hint">Matches are case-insensitive; spaces at the beginning or end are ignored.</p>
+      </div>
+
       {error && <p className="error-banner">{error}</p>}
 
       {loading ? (
@@ -46,6 +63,11 @@ export default function Dashboard() {
           {vehicles.map(vehicle => (
             <VehicleCard key={vehicle.id} vehicle={vehicle} />
           ))}
+        </div>
+      ) : registrationSearch.trim() ? (
+        <div className="empty-garage" data-testid="search-empty-state" role="status">
+          <h2>No vehicles found</h2>
+          <p>No registration numbers match “{registrationSearch.trim()}”. Try a different search.</p>
         </div>
       ) : (
         <div className="empty-garage" data-testid="empty-state" role="status">
