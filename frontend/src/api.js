@@ -9,7 +9,14 @@ export async function api(path, options = {}) {
   const response = await fetch(`${API_URL}${path}`, { ...options, headers })
   if (response.status === 204) return null
   const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(body.detail || 'Something went wrong. Please try again.')
+  if (!response.ok) {
+    const message = typeof body.detail === 'string'
+      ? body.detail
+      : Array.isArray(body.detail)
+        ? body.detail.map(e => e.msg || e.detail || JSON.stringify(e)).join(', ')
+        : 'Something went wrong. Please try again.'
+    throw new Error(message)
+  }
   return body
 }
 

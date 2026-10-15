@@ -63,29 +63,97 @@ def owned_record(db: Session, record_id: int, owner_id: int) -> MaintenanceRecor
     return record
 
 
-def check_mileage(db: Session, vehicle_id: int, mileage: int, exclude_id: int | None = None) -> None:
+def check_mileage(
+    db: Session,
+    vehicle_id: int,
+    mileage: int,
+    service_date: date | None = None,
+    exclude_id: int | None = None,
+    next_service_mileage: int | None = None,
+) -> None:
     if mileage < 0:
         raise HTTPException(status_code=422, detail="Mileage must be a non-negative value")
-    query = select(func.max(MaintenanceRecord.mileage)).where(MaintenanceRecord.vehicle_id == vehicle_id)
-    if exclude_id is not None:
-        query = query.where(MaintenanceRecord.id != exclude_id)
-    highest = db.scalar(query)
-    if highest is not None and mileage < highest:
+
+    if next_service_mileage is not None and next_service_mileage < mileage:
         raise HTTPException(
             status_code=422,
-            detail=(
-                f"Mileage {mileage} km is lower than the highest recorded reading {highest} km. "
-                f"Correct the earlier entry, or enter a reading of at least {highest} km."
-            ),
+            detail=f"Next service mileage ({next_service_mileage} km) cannot be lower than the current service mileage ({mileage} km)",
         )
+
+    if service_date is not None:
+        prev_q = select(func.max(MaintenanceRecord.mileage)).where(
+            MaintenanceRecord.vehicle_id == vehicle_id,
+            MaintenanceRecord.service_date < service_date,
+        )
+        if exclude_id is not None:
+            prev_q = prev_q.where(MaintenanceRecord.id != exclude_id)
+        prev_max = db.scalar(prev_q)
+
+        same_day_q = select(func.min(MaintenanceRecord.mileage)).where(
+            MaintenanceRecord.vehicle_id == vehicle_id,
+            MaintenanceRecord.service_date == service_date,
+        )
+        if exclude_id is not None:
+            same_day_q = same_day_q.where(MaintenanceRecord.id != exclude_id)
+        same_day_min = db.scalar(same_day_q)
+
+        lower_bound = prev_max
+        if same_day_min is not None:
+            lower_bound = max(prev_max, same_day_min) if prev_max is not None else same_day_min
+
+        if lower_bound is not None and mileage < lower_bound:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Mileage {mileage} km is lower than the previous recorded reading {lower_bound} km. "
+                    f"Correct the earlier entry, or enter a reading of at least {lower_bound} km."
+                ),
+            )
+
+        next_q = select(func.min(MaintenanceRecord.mileage)).where(
+            MaintenanceRecord.vehicle_id == vehicle_id,
+            MaintenanceRecord.service_date > service_date,
+        )
+        if exclude_id is not None:
+            next_q = next_q.where(MaintenanceRecord.id != exclude_id)
+        next_min = db.scalar(next_q)
+        if next_min is not None and mileage > next_min:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Mileage {mileage} km is higher than the subsequent recorded reading {next_min} km. "
+                    f"Correct the later entry, or enter a reading of at most {next_min} km."
+                ),
+            )
+    else:
+        query = select(func.max(MaintenanceRecord.mileage)).where(MaintenanceRecord.vehicle_id == vehicle_id)
+        if exclude_id is not None:
+            query = query.where(MaintenanceRecord.id != exclude_id)
+        highest = db.scalar(query)
+        if highest is not None and mileage < highest:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Mileage {mileage} km is lower than the highest recorded reading {highest} km. "
+                    f"Correct the earlier entry, or enter a reading of at least {highest} km."
+                ),
+            )
 
 
 @router.post("/vehicles/{vehicle_id}/maintenance", response_model=MaintenanceRead, status_code=status.HTTP_201_CREATED)
 def create_record(vehicle_id: int, data: MaintenanceCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    owned_vehicle(db, vehicle_id, user.id)
-    check_mileage(db, vehicle_id, data.mileage)
+    vehicle = owned_vehicle(db, vehicle_id, user.id)
+    check_mileage(
+        db,
+        vehicle_id,
+        data.mileage,
+        service_date=data.service_date,
+        next_service_mileage=data.next_service_mileage,
+    )
     record = MaintenanceRecord(**data.model_dump(), vehicle_id=vehicle_id)
     db.add(record)
+    if data.mileage > vehicle.current_mileage:
+        vehicle.current_mileage = data.mileage
     db.commit()
     db.refresh(record)
     return record
@@ -199,9 +267,19 @@ def get_record(record_id: int, db: Session = Depends(get_db), user: User = Depen
 @router.put("/maintenance/{record_id}", response_model=MaintenanceRead)
 def update_record(record_id: int, data: MaintenanceUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     record = owned_record(db, record_id, user.id)
-    check_mileage(db, record.vehicle_id, data.mileage, exclude_id=record.id)
+    check_mileage(
+        db,
+        record.vehicle_id,
+        data.mileage,
+        service_date=data.service_date,
+        exclude_id=record.id,
+        next_service_mileage=data.next_service_mileage,
+    )
     for key, value in data.model_dump().items():
         setattr(record, key, value)
+    vehicle = db.scalar(select(Vehicle).where(Vehicle.id == record.vehicle_id))
+    if vehicle and data.mileage > vehicle.current_mileage:
+        vehicle.current_mileage = data.mileage
     db.commit()
     db.refresh(record)
     return record

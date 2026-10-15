@@ -16,7 +16,7 @@ A small, beginner-friendly app for keeping your vehicles and their maintenance h
 - Add, view, update, and delete your own vehicles.
 - Record, edit, and delete service history with mileage, cost, notes, and optional next-service details.
 - Organize service records by category (oil change, general service, brakes, tires, battery, other), validated on the backend.
-- Mileage must stay non-decreasing per vehicle; lower readings are rejected with a message to correct the earlier entry.
+- Mileage must stay non-decreasing chronologically per vehicle; readings lower than earlier entries or higher than subsequent entries are rejected with a clear correction rule message.
 - Attach receipt files (PDF/JPG/PNG/WebP up to 5 MB) to service records; only the vehicle owner can view or download them.
 - Filter service history by service type or date and choose the date order.
 - See service counts, the last service, and the next service on your dashboard.
