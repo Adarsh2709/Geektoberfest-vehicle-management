@@ -5,15 +5,18 @@ import VehicleCard from '../components/VehicleCard'
 
 export default function Dashboard() {
   const [vehicles, setVehicles] = useState([])
+  const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api('/vehicles')
+    setLoading(true)
+    const query = search ? `?search=${encodeURIComponent(search)}` : ''
+    api(`/vehicles${query}`)
       .then(setVehicles)
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
-  }, [])
+  }, [search])
 
   return (
     <>
@@ -37,6 +40,17 @@ export default function Dashboard() {
         </div>
       </section>
 
+      <div className="search-container" style={{ marginBottom: '1.5rem' }}>
+        <input
+          type="text"
+          placeholder="Search by registration number..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="search-input"
+          style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid #ccc' }}
+        />
+      </div>
+
       {error && <p className="error-banner">{error}</p>}
 
       {loading ? (
@@ -46,6 +60,12 @@ export default function Dashboard() {
           {vehicles.map(vehicle => (
             <VehicleCard key={vehicle.id} vehicle={vehicle} />
           ))}
+        </div>
+      ) : search ? (
+        <div className="empty-garage" data-testid="empty-search-state" role="status">
+          <span className="empty-art" aria-hidden="true">⌁</span>
+          <h2>No vehicles found</h2>
+          <p>No vehicles match your search registration number "{search}".</p>
         </div>
       ) : (
         <div className="empty-garage" data-testid="empty-state" role="status">
