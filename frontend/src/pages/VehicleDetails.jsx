@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { api, friendlyDate } from '../api'
+import { api, formatCost, friendlyDate } from '../api'
 import { SERVICE_TYPES } from '../serviceTypes'
 import MaintenanceForm from '../components/MaintenanceForm'
 import MaintenanceTable from '../components/MaintenanceTable'
@@ -13,8 +13,6 @@ export default function VehicleDetails() {
   const [summary, setSummary] = useState(null)
   const [page, setPage] = useState(1)
   const limit = 10
-
-  function formatINR(value) { const amount = Number(value ?? 0); return Number.isFinite(amount) ? amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-' }
 
   async function loadRecords() {
     const params = new URLSearchParams({ sort, page, limit })
@@ -47,7 +45,7 @@ export default function VehicleDetails() {
     {formMode === 'vehicle' && <section className="inline-editor"><div className="section-heading"><div><h2>Edit vehicle details</h2></div><button className="text-button" onClick={() => setFormMode('')}>Close</button></div><VehicleForm vehicleId={id} initial={vehicle} onSaved={async () => { setVehicle(await api(`/vehicles/${id}`)); setFormMode('') }} /></section>}
     <section className="maintenance-section"><div className="section-heading history-heading"><div><span className="eyebrow">KEEP A GOOD RECORD</span><h2>Service history <span className="count-pill">{vehicle.maintenance_count}</span></h2><p>Every check-up, repair, and little bit of care.</p></div><button className="button primary" onClick={() => { setEditingRecord(null); setFormMode(formMode === 'maintenance' ? '' : 'maintenance') }}>＋ Add service</button></div>
       <div className="filters"><label>Service type <select value={filter} onChange={e => { setFilter(e.target.value); setPage(1) }}><option value="">All services</option>{['Oil Change', 'General Service', 'Brake Service', 'Tire Change', 'Battery', 'Other'].map(type => <option key={type}>{type}</option>)}</select></label><label>From <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1) }} /></label><label>To <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1) }} /></label><label>Order <select value={sort} onChange={e => setSort(e.target.value)}><option value="desc">Newest first</option><option value="asc">Oldest first</option><option value="cost_desc">Cost: High to Low</option><option value="cost_asc">Cost: Low to High</option></select></label><span>{records.length} record{records.length === 1 ? '' : 's'}</span></div>
-      <p className="spending-summary" data-testid="spending-summary">Total spent in selected period: <strong>{summary ? `₹${formatINR(summary.total_cost)}` : '—'}</strong>{summary && <span> · {summary.record_count} service{summary.record_count === 1 ? '' : 's'}</span>}</p>
+      <p className="spending-summary" data-testid="spending-summary">Total spent in selected period: <strong>{summary ? formatCost(summary.total_cost) : '—'}</strong>{summary && <span> · {summary.record_count} service{summary.record_count === 1 ? '' : 's'}</span>}</p>
       {formMode === 'maintenance' && <div className="inline-editor"><div className="section-heading"><div><h2>{editingRecord ? 'Edit service' : 'Add a service'}</h2></div></div><MaintenanceForm vehicleId={id} record={editingRecord} onCancel={() => setFormMode('')} onSaved={async () => { await loadRecords(); await loadSummary(); setFormMode(''); setEditingRecord(null); const latest = await api(`/vehicles/${id}`); setVehicle(latest) }} /></div>}
       <MaintenanceTable records={records} onEdit={record => { setEditingRecord(record); setFormMode('maintenance') }} onDelete={deleteRecord} />
       <div className="pagination-controls" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1.5rem' }}>

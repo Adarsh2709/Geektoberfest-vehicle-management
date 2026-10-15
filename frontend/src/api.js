@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = (import.meta?.env?.VITE_API_URL) || 'http://localhost:8000'
 
 export function token() { return localStorage.getItem('vmi_token') }
 export function saveToken(value) { localStorage.setItem('vmi_token', value) }
@@ -16,6 +16,15 @@ export async function api(path, options = {}) {
 export function friendlyDate(value) {
   return value ? new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 }
+
+export function formatCost(value) {
+  if (value === null || value === undefined || value === '') return '₹0.00'
+  const amount = Number(value)
+  return Number.isFinite(amount)
+    ? `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : '₹0.00'
+}
+
 
 export async function uploadReceipt(recordId, file) {
   const headers = { ...(token() ? { Authorization: `Bearer ${token()}` } : {}) }
