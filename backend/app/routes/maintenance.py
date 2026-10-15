@@ -193,6 +193,8 @@ def list_records(
     limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date cannot be after end_date")
     if service_type is not None and service_type not in SERVICE_TYPES:
         raise HTTPException(
             status_code=422,
