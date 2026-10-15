@@ -120,7 +120,9 @@ def maintenance_summary(
 def list_records(
     vehicle_id: int, service_type: str | None = None,
     start_date: date | None = Query(default=None), end_date: date | None = Query(default=None),
-    sort: str = Query(default="desc", pattern="^(asc|desc)$"),
+    sort: str = Query(default="desc", pattern="^(asc|desc|date_asc|date_desc|cost_asc|cost_desc)$"),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     if service_type is not None and service_type not in SERVICE_TYPES:
@@ -136,8 +138,21 @@ def list_records(
         query = query.where(MaintenanceRecord.service_date >= start_date)
     if end_date:
         query = query.where(MaintenanceRecord.service_date <= end_date)
-    ordering = MaintenanceRecord.service_date.asc() if sort == "asc" else MaintenanceRecord.service_date.desc()
-    return db.scalars(query.order_by(ordering, MaintenanceRecord.id.desc())).all()
+    if sort == "cost_desc":
+        ordering = MaintenanceRecord.cost.desc().nulls_last()
+    elif sort == "cost_asc":
+        ordering = MaintenanceRecord.cost.asc().nulls_last()
+    elif sort in ("asc", "date_asc"):
+        ordering = MaintenanceRecord.service_date.asc().nulls_last()
+    else:
+        ordering = MaintenanceRecord.service_date.desc().nulls_last()
+    query = query.order_by(ordering, MaintenanceRecord.id.desc())
+
+    # Apply pagination offset and limit
+    offset = (page - 1) * limit
+    query = query.offset(offset).limit(limit)
+
+    return db.scalars(query).all()
 
 
 @router.get("/vehicles/{vehicle_id}/maintenance.csv")
@@ -146,13 +161,6 @@ def export_records_csv(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Download the signed-in user's maintenance history for a vehicle as CSV.
-
-    Only the vehicle owner may export, and only that vehicle's records are
-    included. Columns are listed in ``CSV_COLUMNS``; values are written with the
-    standard-library csv writer so commas, quotes, and line breaks in free-text
-    fields (e.g. ``description``) are escaped correctly.
-    """
     owned_vehicle(db, vehicle_id, user.id)
     records = db.scalars(
         select(MaintenanceRecord)

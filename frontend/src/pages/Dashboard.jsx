@@ -5,18 +5,19 @@ import VehicleCard from '../components/VehicleCard'
 
 export default function Dashboard() {
   const [vehicles, setVehicles] = useState([])
-  const [search, setSearch] = useState('')
+  const [registrationSearch, setRegistrationSearch] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const query = registrationSearch.trim()
+    const path = query ? `/vehicles?registration_number=${encodeURIComponent(query)}` : '/vehicles'
     setLoading(true)
-    const query = search ? `?search=${encodeURIComponent(search)}` : ''
-    api(`/vehicles${query}`)
+    api(path)
       .then(setVehicles)
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
-  }, [search])
+  }, [registrationSearch])
 
   return (
     <>
@@ -40,15 +41,17 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <div className="search-container" style={{ marginBottom: '1.5rem' }}>
+      <div className="vehicle-search">
+        <label htmlFor="registration-search">Search by registration number</label>
         <input
-          type="text"
-          placeholder="Search by registration number..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="search-input"
-          style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid #ccc' }}
+          id="registration-search"
+          type="search"
+          value={registrationSearch}
+          onChange={event => setRegistrationSearch(event.target.value)}
+          placeholder="e.g. KA01AB1234"
+          aria-describedby="registration-search-hint"
         />
+        <p id="registration-search-hint">Matches are case-insensitive; spaces at the beginning or end are ignored.</p>
       </div>
 
       {error && <p className="error-banner">{error}</p>}
@@ -61,11 +64,10 @@ export default function Dashboard() {
             <VehicleCard key={vehicle.id} vehicle={vehicle} />
           ))}
         </div>
-      ) : search ? (
-        <div className="empty-garage" data-testid="empty-search-state" role="status">
-          <span className="empty-art" aria-hidden="true">⌁</span>
+      ) : registrationSearch.trim() ? (
+        <div className="empty-garage" data-testid="search-empty-state" role="status">
           <h2>No vehicles found</h2>
-          <p>No vehicles match your search registration number "{search}".</p>
+          <p>No registration numbers match “{registrationSearch.trim()}”. Try a different search.</p>
         </div>
       ) : (
         <div className="empty-garage" data-testid="empty-state" role="status">
