@@ -21,8 +21,8 @@ def owned_vehicle(db: Session, vehicle_id: int, owner_id: int) -> Vehicle:
 
 
 def dashboard_vehicle(vehicle: Vehicle) -> dict:
-    records = vehicle.maintenance_records
-    latest = records[0] if records else None
+    records = list(vehicle.maintenance_records or [])
+    latest = max(records, key=lambda r: (r.service_date, r.id or 0)) if records else None
     upcoming = [record.next_service_date for record in records if record.next_service_date and record.next_service_date >= date.today()]
     return {
         "id": vehicle.id, "make": vehicle.make, "model": vehicle.model, "year": vehicle.year,

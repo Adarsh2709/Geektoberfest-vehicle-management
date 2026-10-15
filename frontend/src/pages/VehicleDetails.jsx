@@ -55,6 +55,6 @@ export default function VehicleDetails() {
         <span>Page {page}</span>
         <button disabled={records.length < limit} onClick={() => setPage(p => p + 1)} className="btn">Next</button>
       </div>
-    </section><p className="last-service-note">Last recorded service: {friendlyDate(vehicle.last_service_date)}</p>
+    </section><p className="last-service-note">Last recorded service: {vehicle.last_service_date ? friendlyDate(vehicle.last_service_date) : 'No service yet'}</p>
   </div>
 }
