@@ -22,6 +22,7 @@ A small, beginner-friendly app for keeping your vehicles and their maintenance h
 - See service counts, the last service, and the next service on your dashboard.
 - Search your vehicles by registration number. Search ignores letter case and trims whitespace at the beginning and end; internal whitespace remains significant.
 - See total maintenance spending for a vehicle over the selected date range on the vehicle details page.
+- Export a vehicle's full service history as a CSV file with the **Export CSV** button on the vehicle details page. The file has a header row (`id`, `service_date`, `mileage`, `service_type`, `description`, `cost`, `next_service_date`, `next_service_mileage`), lists newest service first, and only includes records for vehicles you own. Commas, quotes, and line breaks in free text are escaped. A vehicle with no history exports just the header row.
 - New accounts see a helpful empty state with a clear action to add their first vehicle.
 - Searches with no matches show a separate prompt to try another registration number.
 - Keep user data private through backend ownership checks.

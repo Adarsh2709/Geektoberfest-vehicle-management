@@ -137,6 +137,30 @@ def test_non_owner_cannot_export():
     assert resp.status_code == 404
 
 
+def test_export_includes_only_selected_vehicle_records():
+    ids = _seed_vehicle_with_records()
+    db = TestSession()
+    other_vehicle = Vehicle(
+        make="Honda", model="Civic", year=2022,
+        registration_number="REG-3", current_mileage=1000, owner_id=ids["owner"],
+    )
+    db.add(other_vehicle)
+    db.flush()
+    db.add(MaintenanceRecord(
+        vehicle_id=other_vehicle.id, service_date=date(2024, 3, 1), mileage=900,
+        service_type="Battery", description="Other vehicle only", cost=Decimal("10.00"),
+    ))
+    db.commit()
+    db.close()
+    _CURRENT["user"] = _user(ids["owner"])
+
+    resp = client.get(f"/vehicles/{ids['vehicle']}/maintenance.csv")
+    rows = list(csv.reader(io.StringIO(resp.text)))
+
+    assert len(rows) == 3
+    assert all("Other vehicle only" not in row for row in rows)
+
+
 def test_empty_history_returns_header_only():
     db = TestSession()
     owner = User(username="solo", email="solo@ex.com", hashed_password="x")
