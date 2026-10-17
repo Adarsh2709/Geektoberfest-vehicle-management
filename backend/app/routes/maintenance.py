@@ -3,6 +3,7 @@ from pathlib import Path
 from uuid import uuid4
 import csv
 import io
+import urllib.parse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import FileResponse
@@ -18,7 +19,16 @@ from app.schemas import MaintenanceCreate, MaintenanceRead, MaintenanceSummary, 
 router = APIRouter(tags=["maintenance"])
 
 ALLOWED_RECEIPT_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".webp"}
-ALLOWED_RECEIPT_CONTENT_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
+ALLOWED_RECEIPT_CONTENT_TYPES = {
+    "application/pdf",
+    "application/x-pdf",
+    "image/jpeg",
+    "image/jpg",
+    "image/pjpeg",
+    "image/png",
+    "image/x-png",
+    "image/webp",
+}
 
 
 def receipt_directory() -> Path:
@@ -299,9 +309,12 @@ def delete_record(record_id: int, db: Session = Depends(get_db), user: User = De
 @router.post("/maintenance/{record_id}/receipt", response_model=MaintenanceRead, status_code=status.HTTP_201_CREATED)
 async def upload_receipt(record_id: int, file: UploadFile, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     record = owned_record(db, record_id, user.id)
-    original_name = (file.filename or "").strip()
-    extension = Path(original_name).suffix.lower()
-    if extension not in ALLOWED_RECEIPT_EXTENSIONS or (file.content_type or "").lower() not in ALLOWED_RECEIPT_CONTENT_TYPES:
+    raw_filename = urllib.parse.unquote((file.filename or "").strip())
+    base_name = raw_filename.replace("\\", "/").split("/")[-1]
+    safe_name = base_name.replace('"', "").replace("'", "").replace("\r", "").replace("\n", "").strip()[:255]
+    extension = Path(safe_name).suffix.lower()
+    raw_content_type = (file.content_type or "").lower().split(";")[0].strip()
+    if extension not in ALLOWED_RECEIPT_EXTENSIONS or raw_content_type not in ALLOWED_RECEIPT_CONTENT_TYPES:
         raise HTTPException(status_code=422, detail="Receipt must be a PDF, JPG, PNG, or WebP file")
     contents = await file.read()
     max_bytes = settings.max_receipt_mb * 1024 * 1024
@@ -322,9 +335,9 @@ async def upload_receipt(record_id: int, file: UploadFile, db: Session = Depends
             pass
         raise HTTPException(status_code=500, detail="Could not store the receipt. Please try again.")
     record.receipt_path = str(target)
-    record.receipt_content_type = (file.content_type or "").lower()
+    record.receipt_content_type = raw_content_type
     record.receipt_size = len(contents)
-    record.receipt_original_name = Path(original_name).name[:255]
+    record.receipt_original_name = safe_name or f"receipt{extension}"
     try:
         db.commit()
     except Exception:

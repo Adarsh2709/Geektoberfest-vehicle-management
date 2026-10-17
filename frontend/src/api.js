@@ -69,3 +69,7 @@ export async function downloadReceipt(recordId, filename) {
   anchor.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+export async function deleteReceipt(recordId) {
+  return api(`/maintenance/${recordId}/receipt`, { method: 'DELETE' })
+}
