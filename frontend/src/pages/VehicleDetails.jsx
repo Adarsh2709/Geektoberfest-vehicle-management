@@ -34,7 +34,10 @@ export default function VehicleDetails() {
   }
 
   async function loadSummary() {
-    if (startDate && endDate && startDate > endDate) return
+    if (startDate && endDate && startDate > endDate) {
+      setSummary(null)
+      return
+    }
     const params = new URLSearchParams()
     if (filter) params.set('service_type', filter)
     if (startDate) params.set('start_date', startDate)
