@@ -129,3 +129,77 @@ def test_update_to_decreasing_reading_is_rejected(setup):
     assert response.status_code == 422
     assert "Correct the earlier entry" in response.json()["detail"]
     assert client.put(f"/maintenance/{created['id']}", json=_payload(1600, "2026-03-01")).status_code == 200
+
+
+def test_valid_intermediate_date_reading_is_accepted(setup):
+    client = TestClient(app)
+    # Existing record is 1000 km on 2026-01-10
+    # Add a future record on 2026-03-10 with 3000 km
+    res_future = client.post(
+        f"/vehicles/{setup['vehicle']}/maintenance", json=_payload(3000, "2026-03-10")
+    )
+    assert res_future.status_code == 201
+
+    # Insert an intermediate record on 2026-02-10 with 2000 km (between 1000 and 3000)
+    res_mid = client.post(
+        f"/vehicles/{setup['vehicle']}/maintenance", json=_payload(2000, "2026-02-10")
+    )
+    assert res_mid.status_code == 201
+    assert res_mid.json()["mileage"] == 2000
+
+
+def test_intermediate_reading_higher_than_subsequent_is_rejected(setup):
+    client = TestClient(app)
+    # Existing record is 1000 km on 2026-01-10
+    # Add a future record on 2026-03-10 with 3000 km
+    client.post(
+        f"/vehicles/{setup['vehicle']}/maintenance", json=_payload(3000, "2026-03-10")
+    )
+
+    # Attempt to insert an intermediate record on 2026-02-10 with 3500 km (> 3000 km)
+    response = client.post(
+        f"/vehicles/{setup['vehicle']}/maintenance", json=_payload(3500, "2026-02-10")
+    )
+    assert response.status_code == 422
+    assert "higher than the subsequent recorded reading" in response.json()["detail"]
+
+
+def test_update_earlier_record_higher_than_subsequent_is_rejected(setup):
+    client = TestClient(app)
+    # Existing record is 1000 km on 2026-01-10
+    res_future = client.post(
+        f"/vehicles/{setup['vehicle']}/maintenance", json=_payload(3000, "2026-03-10")
+    )
+    assert res_future.status_code == 201
+
+    # Get the 2026-01-10 record ID
+    records = client.get(f"/vehicles/{setup['vehicle']}/maintenance").json()
+    earlier_rec = [r for r in records if r["service_date"] == "2026-01-10"][0]
+
+    # Attempt to update the earlier record to 4000 km (> 3000 km of subsequent record)
+    response = client.put(f"/maintenance/{earlier_rec['id']}", json=_payload(4000, "2026-01-10"))
+    assert response.status_code == 422
+    assert "higher than the subsequent recorded reading" in response.json()["detail"]
+
+
+def test_next_service_mileage_lower_than_current_is_rejected(setup):
+    client = TestClient(app)
+    payload = _payload(1500, "2026-02-01")
+    payload["next_service_mileage"] = 1200
+    response = client.post(f"/vehicles/{setup['vehicle']}/maintenance", json=payload)
+    assert response.status_code == 422
+    assert "cannot be lower" in response.json()["detail"]
+
+
+def test_vehicle_current_mileage_syncs_with_highest_service_reading(setup):
+    client = TestClient(app)
+    # Post a service reading of 2500 km
+    response = client.post(
+        f"/vehicles/{setup['vehicle']}/maintenance", json=_payload(2500, "2026-04-01")
+    )
+    assert response.status_code == 201
+
+    # Vehicle current_mileage should now be 2500 km
+    veh_response = client.get(f"/vehicles/{setup['vehicle']}")
+    assert veh_response.status_code == 200
+    assert veh_response.json()["current_mileage"] == 2500

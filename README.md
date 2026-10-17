@@ -16,12 +16,13 @@ A small, beginner-friendly app for keeping your vehicles and their maintenance h
 - Add, view, update, and delete your own vehicles.
 - Record, edit, and delete service history with mileage, cost, notes, and optional next-service details.
 - Organize service records by category (oil change, general service, brakes, tires, battery, other), validated on the backend.
-- Mileage must stay non-decreasing per vehicle; lower readings are rejected with a message to correct the earlier entry.
+- Mileage must stay non-decreasing chronologically per vehicle; readings lower than earlier entries or higher than subsequent entries are rejected with a clear correction rule message.
 - Attach receipt files (PDF/JPG/PNG/WebP up to 5 MB) to service records; only the vehicle owner can view or download them.
 - Filter service history by service type or date and choose the date order.
 - See service counts, the last service, and the next service on your dashboard.
 - Search your vehicles by registration number. Search ignores letter case and trims whitespace at the beginning and end; internal whitespace remains significant.
 - See total maintenance spending for a vehicle over the selected date range on the vehicle details page.
+- Export a vehicle's full service history as a CSV file with the **Export CSV** button on the vehicle details page. The file has a header row (`id`, `service_date`, `mileage`, `service_type`, `description`, `cost`, `next_service_date`, `next_service_mileage`), lists newest service first, and only includes records for vehicles you own. Commas, quotes, and line breaks in free text are escaped. A vehicle with no history exports just the header row.
 - New accounts see a helpful empty state with a clear action to add their first vehicle.
 - Searches with no matches show a separate prompt to try another registration number.
 - Keep user data private through backend ownership checks.

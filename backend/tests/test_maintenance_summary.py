@@ -42,10 +42,15 @@ def setup():
         make="Honda", model="City", year=2021,
         registration_number="KA02CD5678", current_mileage=10000, owner_id=stranger.id,
     )
-    db.add_all([vehicle, other_vehicle])
+    empty_vehicle = Vehicle(
+        make="Hyundai", model="i20", year=2022,
+        registration_number="KA03EF9999", current_mileage=5000, owner_id=owner.id,
+    )
+    db.add_all([vehicle, other_vehicle, empty_vehicle])
     db.commit()
     db.refresh(vehicle)
     db.refresh(other_vehicle)
+    db.refresh(empty_vehicle)
 
     db.add_all([
         MaintenanceRecord(
@@ -62,7 +67,7 @@ def setup():
         ),
     ])
     db.commit()
-    ids = {"owner": owner.id, "vehicle": vehicle.id, "other_vehicle": other_vehicle.id}
+    ids = {"owner": owner.id, "vehicle": vehicle.id, "other_vehicle": other_vehicle.id, "empty_vehicle": empty_vehicle.id}
     db.close()
 
     def override_db():
@@ -143,3 +148,59 @@ def test_other_owners_vehicle_is_not_found(setup):
         f"/vehicles/{setup['other_vehicle']}/maintenance/summary"
     )
     assert response.status_code == 404
+
+
+def test_filter_by_service_type(setup):
+    client = TestClient(app)
+    # Filter by Oil Change (2 records: 100.50 + 300.25 = 400.75)
+    res = client.get(
+        f"/vehicles/{setup['vehicle']}/maintenance/summary",
+        params={"service_type": "Oil Change"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["record_count"] == 2
+    assert Decimal(body["total_cost"]) == Decimal("400.75")
+    assert body["service_type"] == "Oil Change"
+
+    # Filter by Brake Service (1 record: 200.00)
+    res2 = client.get(
+        f"/vehicles/{setup['vehicle']}/maintenance/summary",
+        params={"service_type": "Brake Service"},
+    )
+    assert res2.status_code == 200
+    assert res2.json()["record_count"] == 1
+    assert Decimal(res2.json()["total_cost"]) == Decimal("200.00")
+
+
+def test_invalid_service_type_is_rejected(setup):
+    client = TestClient(app)
+    res = client.get(
+        f"/vehicles/{setup['vehicle']}/maintenance/summary",
+        params={"service_type": "Turbo Replacement"},
+    )
+    assert res.status_code == 422
+    assert "Unknown service type" in res.json()["detail"]
+
+
+def test_combined_service_type_and_date_range(setup):
+    client = TestClient(app)
+    # Between 2026-01-01 and 2026-02-01, only 1 Oil Change exists (100.50)
+    res = client.get(
+        f"/vehicles/{setup['vehicle']}/maintenance/summary",
+        params={"service_type": "Oil Change", "start_date": "2026-01-01", "end_date": "2026-02-01"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["record_count"] == 1
+    assert Decimal(body["total_cost"]) == Decimal("100.50")
+
+
+def test_empty_vehicle_history_returns_zero(setup):
+    client = TestClient(app)
+    res = client.get(f"/vehicles/{setup['empty_vehicle']}/maintenance/summary")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["record_count"] == 0
+    assert Decimal(body["total_cost"]) == Decimal("0")
+
