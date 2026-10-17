@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import User, Vehicle
+from app.models import MaintenanceRecord, User, Vehicle
+from app.routes.maintenance import remove_receipt_file
 from app.schemas import VehicleCreate, VehicleRead, VehicleUpdate
 
 router = APIRouter(prefix="/vehicles", tags=["vehicles"])
@@ -85,5 +86,13 @@ def update_vehicle(vehicle_id: int, data: VehicleUpdate, db: Session = Depends(g
 @router.delete("/{vehicle_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_vehicle(vehicle_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     vehicle = owned_vehicle(db, vehicle_id, user.id)
+    receipt_paths = db.scalars(
+        select(MaintenanceRecord.receipt_path).where(
+            MaintenanceRecord.vehicle_id == vehicle_id,
+            MaintenanceRecord.receipt_path.is_not(None),
+        )
+    ).all()
     db.delete(vehicle)
     db.commit()
+    for path in receipt_paths:
+        remove_receipt_file(path)

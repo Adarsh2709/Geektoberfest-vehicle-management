@@ -9,7 +9,14 @@ export async function api(path, options = {}) {
   const response = await fetch(`${API_URL}${path}`, { ...options, headers })
   if (response.status === 204) return null
   const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(body.detail || 'Something went wrong. Please try again.')
+  if (!response.ok) {
+    const message = typeof body.detail === 'string'
+      ? body.detail
+      : Array.isArray(body.detail)
+        ? body.detail.map(e => e.msg || e.detail || JSON.stringify(e)).join(', ')
+        : 'Something went wrong. Please try again.'
+    throw new Error(message)
+  }
   return body
 }
 
@@ -36,6 +43,24 @@ export async function uploadReceipt(recordId, file) {
   return body
 }
 
+export async function downloadMaintenanceCsv(vehicleId) {
+  const headers = { ...(token() ? { Authorization: `Bearer ${token()}` } : {}) }
+  const response = await fetch(`${API_URL}/vehicles/${vehicleId}/maintenance.csv`, { headers })
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new Error(body.detail || 'Could not export the service history.')
+  }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `vehicle-${vehicleId}-maintenance.csv`
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 export async function downloadReceipt(recordId, filename) {
   const headers = { ...(token() ? { Authorization: `Bearer ${token()}` } : {}) }
   const response = await fetch(`${API_URL}/maintenance/${recordId}/receipt`, { headers })
@@ -52,4 +77,8 @@ export async function downloadReceipt(recordId, filename) {
   anchor.click()
   anchor.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export async function deleteReceipt(recordId) {
+  return api(`/maintenance/${recordId}/receipt`, { method: 'DELETE' })
 }

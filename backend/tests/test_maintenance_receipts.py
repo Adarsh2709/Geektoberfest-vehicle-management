@@ -55,7 +55,7 @@ def setup(tmp_path):
     db.add(record)
     db.commit()
     db.refresh(record)
-    ids = {"owner": owner.id, "stranger": stranger.id, "record": record.id}
+    ids = {"owner": owner.id, "stranger": stranger.id, "vehicle": vehicle.id, "record": record.id}
     db.close()
 
     def override_db():
@@ -144,3 +144,40 @@ def test_delete_receipt_and_missing_receipt(setup):
     assert client.delete(f"/maintenance/{record_id}/receipt").status_code == 204
     assert list(setup["dir"].iterdir()) == []
     assert client.get(f"/maintenance/{record_id}/receipt").status_code == 404
+
+
+def test_upload_receipt_with_content_type_parameters_and_variants(setup):
+    client = TestClient(app)
+    record_id = setup["ids"]["record"]
+    # Upload with parameter e.g. charset
+    res = _upload(client, record_id, name="invoice.pdf", content=PDF_BYTES, content_type="application/pdf; charset=binary")
+    assert res.status_code == 201
+    assert res.json()["receipt_content_type"] == "application/pdf"
+
+    # Upload with jpeg variant
+    res2 = _upload(client, record_id, name="photo.jpg", content=JPG_BYTES, content_type="image/jpeg")
+    assert res2.status_code == 201
+    assert res2.json()["receipt_content_type"] == "image/jpeg"
+
+
+def test_filename_sanitization_on_upload(setup):
+    client = TestClient(app)
+    record_id = setup["ids"]["record"]
+    res = _upload(client, record_id, name='receipt"evil\r\n.pdf', content=PDF_BYTES, content_type="application/pdf")
+    assert res.status_code == 201
+    assert res.json()["receipt_original_name"] == "receiptevil.pdf"
+    download = client.get(f"/maintenance/{record_id}/receipt")
+    assert download.status_code == 200
+    assert 'filename="receiptevil.pdf"' in download.headers["content-disposition"]
+
+
+def test_delete_vehicle_cleans_up_receipt_files(setup):
+    client = TestClient(app)
+    assert _upload(client, setup["ids"]["record"]).status_code == 201
+    assert len(list(setup["dir"].iterdir())) == 1
+    # Delete the vehicle
+    res = client.delete(f"/vehicles/{setup['ids']['vehicle']}")
+    assert res.status_code == 204
+    # All receipt files should be cleaned up from disk
+    assert list(setup["dir"].iterdir()) == []
+
