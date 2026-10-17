@@ -177,6 +177,11 @@ def maintenance_summary(
 ):
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=422, detail="start_date cannot be after end_date")
+    if service_type is not None and service_type not in SERVICE_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown service type. Choose one of: {', '.join(sorted(SERVICE_TYPES))}",
+        )
     owned_vehicle(db, vehicle_id, user.id)
     filters = [MaintenanceRecord.vehicle_id == vehicle_id]
     if service_type:
